@@ -1,5 +1,5 @@
 {
-  "name": "DGHC",
+  "name": "dghc",
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
@@ -7,8 +7,15 @@
     "cheerio": "^1.0.0-rc.5",
     "fs": "^0.0.1-security",
     "lodash": "^4.17.20",
+    "pg": "^8.16.0",
     "request": "^2.88.2",
     "request-promise-native": "^1.0.9",
     "xlsx": "^0.16.9"
-  }
+  },
+  "description": "Script tự động tải file excel từ website tổng cục thống kê https://danhmuchanhchinh.gso.gov.vn/ và chuyển sang dạng cây json.",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": ""
 }
