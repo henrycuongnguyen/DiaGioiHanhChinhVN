@@ -98,8 +98,6 @@ const parseJson = () => {
         data.map(item => {
             const provinceId = item["Mã TP"];
             const provinceName = item["Tỉnh Thành Phố"];
-            const districtId = item["Mã QH"];
-            const districtName = item["Quận Huyện"];
             const wardId = item["Mã PX"];
             const wardName = item["Phường Xã"];
             const level = item["Cấp"];
@@ -108,24 +106,18 @@ const parseJson = () => {
                 all.push({
                     Id: provinceId,
                     Name: provinceName,
-                    Districts: []
-                })
-            }
-            const index = all.findIndex(x => x.Id == provinceId);
-
-            if (all[index].Districts.findIndex(x => x.Id == districtId) < 0) {
-                all[index].Districts.push({
-                    Id: districtId,
-                    Name: districtName,
                     Wards: []
                 })
             }
-            dIndex = all[index].Districts.findIndex(x => x.Id == districtId);
-            all[index].Districts[dIndex].Wards.push({
-                Id: wardId,
-                Name: wardName,
-                Level: level,
-            })
+            const index = all.findIndex(x => x.Id == provinceId);
+            
+            if (all[index].Wards.findIndex(x => x.Id == wardId) < 0) {
+                all[index].Wards.push({
+                    Id: wardId,
+                    Name: wardName,
+                    Level: level,
+                })
+            }
         })
 
         fs.writeFile("data.json", JSON.stringify(all), null, () => {
