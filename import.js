@@ -13,7 +13,8 @@ const pool = new Pool({
 function getLocationTypeValue(displayName, placeType) {
     // For provinces, use place_type
     if (placeType) {
-        if (placeType === "Thành phố Trung Ương") return 21;
+        if (placeType === "Thành phố Trung Ương") return 11;
+        // if (placeType === "Thành phố Trung Ương") return 21;
         if (placeType === "Tỉnh") return 12;
         // Default type for province if place_type doesn't match
         return 12;
@@ -49,6 +50,39 @@ function GeneratorId(data, id) {
     return id;
 }
 
+function isSpecialProvince(name) {
+    // Danh sách các tỉnh/thành phố đặc biệt cần giữ nguyên
+    const specialProvinces = [
+        "Hà Nội",
+        "Huế",
+        "Lai Châu",
+        "Điện Biên",
+        "Sơn La",
+        "Lạng Sơn",
+        "Quảng Ninh",
+        "Thanh Hóa",
+        "Nghệ An",
+        "Hà Tĩnh",
+        "Cao Bằng"
+    ];
+
+    // Chuẩn hóa tên để so sánh
+    const normalizedInput = name
+        .replace(/^Tỉnh\s+/, '')
+        .replace(/^Thành phố\s+/, '');
+
+    return specialProvinces.some(p => normalizedInput === p);
+}
+
+function getProvinceFullName(name, placeType) {
+    // Bỏ tiền tố nếu có
+    const pureName = name.replace(/^Tỉnh\s+|^Thành phố\s+/, '');
+    
+    // Thêm tiền tố phù hợp
+    const prefix = placeType === "Thành phố Trung Ương" ? "Thành phố" : "Tỉnh";
+    return `${prefix} ${pureName}`;
+}
+
 async function importData() {
     try {
         // Read JSON file
@@ -63,21 +97,29 @@ async function importData() {
         // Insert data into Locations table
         for (const province of provinces) {
             console.log(province.province_code)
-            var dbprovinces = await client.query(`SELECT * FROM "Locations" WHERE "Id" = $1`, [province.province_code]);
+            const fullProvinceName = getProvinceFullName(province.name, province.place_type);
+            var dbprovinces = await client.query(`SELECT * FROM "Locations" WHERE "Name" = $1 OR "Id" = $2`, [fullProvinceName, province.province_code]);
             var provinceId = province.province_code;
-            var normalizedName = normalizeName(province.name);
-            var address = province.name;
-            var type = getLocationTypeValue(province.name, province.place_type);
+            var normalizedName = normalizeName(fullProvinceName);
+            var address = fullProvinceName;
+            var type = getLocationTypeValue(fullProvinceName, province.place_type);
             
-            // Check for duplicate province ID - only check ID existence
+            // Check for duplicate province ID or Name
             if (dbprovinces.rows.length > 0) {
-                // If province exists with same ID but different name, generate new ID
-                if (dbprovinces.rows[0].Name !== province.name) {
+                // Nếu là tỉnh đặc biệt, chỉ update IsActive
+                if (isSpecialProvince(province.name)) {
+                    await client.query(
+                        'UPDATE "Locations" SET "IsActive" = $1 WHERE "Id" = $2',
+                        [true, provinceId]
+                    );
+                }
+                // Nếu không phải tỉnh đặc biệt và khác tên hoặc khác ID, tạo ID mới
+                else if (dbprovinces.rows[0].Name !== fullProvinceName && dbprovinces.rows[0].Id !== provinceId) {
                     provinceId = GeneratorId(dbprovinces.rows, provinceId);
                     // Insert as new province with new ID
                     imported.push({
                         Id: provinceId,
-                        Name: province.name,
+                        Name: fullProvinceName,
                         ParentId: null,
                         Address: address,
                         NormalizedName: normalizedName,
@@ -89,9 +131,9 @@ async function importData() {
                     });
                     await client.query(
                         'INSERT INTO "Locations" ("Id", "Name", "ParentId","Address","NormalizedName","Status","Country", "IsActive","Level","Type") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
-                        [provinceId, province.name, null, address, normalizedName, 6, "VN", true, 3, type]
+                        [provinceId, fullProvinceName, null, address, normalizedName, 6, "VN", true, 3, type]
                     );
-                } else {
+                } else  if (dbprovinces.rows[0].Name == province.name && dbprovinces.rows[0].IsActive == false){
                     // If same province (same name), just update IsActive
                     await client.query(
                         'UPDATE "Locations" SET "IsActive" = $1 WHERE "Id" = $2',
@@ -102,7 +144,7 @@ async function importData() {
                 // If province doesn't exist, insert new
                 imported.push({
                     Id: provinceId,
-                    Name: province.name,
+                    Name: fullProvinceName,
                     ParentId: null,
                     Address: address,
                     NormalizedName: normalizedName,
@@ -114,7 +156,7 @@ async function importData() {
                 });
                 await client.query(
                     'INSERT INTO "Locations" ("Id", "Name", "ParentId","Address","NormalizedName","Status","Country", "IsActive","Level","Type") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
-                    [provinceId, province.name, null, address, normalizedName, 6, "VN", true, 3, type]
+                    [provinceId, fullProvinceName, null, address, normalizedName, 6, "VN", true, 3, type]
                 );
             }
 
@@ -125,7 +167,7 @@ async function importData() {
                 console.log(ward)
                 var wardId = ward.ward_code;
                 var normalizedName = normalizeName(ward.name);
-                var address = ward.name + ", " + province.name;
+                var address = ward.name + ", " + fullProvinceName;
                 var type = getLocationTypeValue(ward.name);
                 
                 // Check for duplicate ward ID in entire Locations table
@@ -143,22 +185,26 @@ async function importData() {
                 }
                 
                 // At this point, wardId is either original (if no duplicate) or new (if there was a duplicate)
-                imported.push({
-                    Id: wardId,
-                    Name: ward.name,
-                    ParentId: provinceId,
-                    Address: address,
-                    NormalizedName: normalizedName,
-                    Status: 6,
-                    Country: "VN",
-                    IsActive: true,
-                    Level: 5,
-                    Type: type
-                });
-                await client.query(
-                    'INSERT INTO "Locations" ("Id", "Name", "ParentId","Address","NormalizedName","Status","Country","IsActive","Level","Type") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
-                    [wardId, ward.name, provinceId, address, normalizedName, 6, "VN", true, 5, type]
-                );
+                if(wardId.includes("_X") && allLocations.rows?.some(x => x.Status == 6)){
+                    
+                }else{
+                    imported.push({
+                        Id: wardId,
+                        Name: ward.name,
+                        ParentId: provinceId,
+                        Address: address,
+                        NormalizedName: normalizedName,
+                        Status: 6,
+                        Country: "VN",
+                        IsActive: true,
+                        Level: 5,
+                        Type: type
+                    });
+                    await client.query(
+                        'INSERT INTO "Locations" ("Id", "Name", "ParentId","Address","NormalizedName","Status","Country","IsActive","Level","Type") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+                        [wardId, ward.name, provinceId, address, normalizedName, 6, "VN", true, 5, type]
+                    );
+                }
             }
         }
 
@@ -173,12 +219,41 @@ async function importData() {
     }
 }
 
-function normalizeName(name) {
+// Function to convert Vietnamese characters to unsigned
+const unsigned = str => {
+    str = str.toLowerCase();
+    str = str.replace(/à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ/g, "a");
+    str = str.replace(/è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ/g, "e");
+    str = str.replace(/ì|í|ị|ỉ|ĩ/g, "i");
+    str = str.replace(/ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ/g, "o");
+    str = str.replace(/ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ/g, "u");
+    str = str.replace(/ỳ|ý|ỵ|ỷ|ỹ/g, "y");
+    str = str.replace(/đ/g, "d");
+    return str;
+}
+
+// Function to normalize location name similar to C# version
+function normalizeName(input){
+    if (!input) return "";
+    // First convert to unsigned
+    let text = unsigned(input);
+    // Replace any character that's not word, digit, space, hyphen, or parentheses
+    text = text.replace(/[^\w\d\s\-\(\)]/g, "");
+    // Convert to uppercase
+    text = text.toUpperCase();
+    // Trim and replace multiple spaces with single space
+    text = text.trim().replace(/\s+/g, " ");
+    var textResult = normalizeNameX(text);
+    return textResult;
+}
+
+function normalizeNameX(name) {
     if (!name) return '';
     // Remove diacritics and convert to uppercase
     var normalizedName = name.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toUpperCase();
     // remove all THI XA, THI TRAN, TINH, HUYEN ,XA
-    normalizedName = normalizedName.replace(/THI XA|THI TRAN|TINH|HUYEN|XA|THANH PHO|QUAN|PHUONG/g, "").trim();
+    normalizedName = normalizedName.replace(/^(THI XA|THI TRAN|TINH|HUYEN|XA|THANH PHO|QUAN|PHUONG)\s*/g, "").trim();
+    // normalizedName = normalizedName.replace(/THI XA|THI TRAN|TINH|HUYEN|XA|THANH PHO|QUAN|PHUONG/g, "").trim();
     return normalizedName;
 }
 
