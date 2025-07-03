@@ -10,6 +10,8 @@ const pool = new Pool({
     database: 'nobiv2-bug-kiot-staticupdate.ecrm.vn'
 });
 
+const firstImport = true;
+
 function getLocationTypeValue(displayName, placeType) {
     // For provinces, use place_type
     if (placeType) {
@@ -83,6 +85,13 @@ function getProvinceFullName(name, placeType) {
     return `${prefix} ${pureName}`;
 }
 
+function nameTinhThanhPho(name) {
+    const normalizedInput = name
+        .replace(/^Tỉnh\s+/, '')
+        .replace(/^Thành phố\s+/, '');
+    return normalizedInput;
+}
+
 async function importData() {
     try {
         // Read JSON file
@@ -113,27 +122,29 @@ async function importData() {
                         [true, provinceId]
                     );
                 }
-                // Nếu không phải tỉnh đặc biệt và khác tên hoặc khác ID, tạo ID mới
-                else if (dbprovinces.rows[0].Name !== fullProvinceName && dbprovinces.rows[0].Id !== provinceId) {
+                // So sánh tên đã được chuẩn hóa và ID
+                else if (normalizeNameX(dbprovinces.rows[0].Name) !== normalizeNameX(province.name) && dbprovinces.rows[0].Id === provinceId && dbprovinces.rows[0].IsActive == false) {
                     provinceId = GeneratorId(dbprovinces.rows, provinceId);
                     // Insert as new province with new ID
-                    imported.push({
-                        Id: provinceId,
-                        Name: fullProvinceName,
-                        ParentId: null,
-                        Address: address,
-                        NormalizedName: normalizedName,
-                        Status: 6,
-                        Country: "VN",
-                        IsActive: true,
-                        Level: 3,
-                        Type: type
-                    });
-                    await client.query(
-                        'INSERT INTO "Locations" ("Id", "Name", "ParentId","Address","NormalizedName","Status","Country", "IsActive","Level","Type") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
-                        [provinceId, fullProvinceName, null, address, normalizedName, 6, "VN", true, 3, type]
-                    );
-                } else  if (dbprovinces.rows[0].Name == province.name && dbprovinces.rows[0].IsActive == false){
+                    if(firstImport){
+                        imported.push({
+                            Id: provinceId,
+                            Name: nameTinhThanhPho(fullProvinceName),
+                            ParentId: null,
+                            Address: address,
+                            NormalizedName: normalizedName,
+                            Status: 6,
+                            Country: "VN",
+                            IsActive: true,
+                            Level: 3,
+                            Type: type
+                        });
+                        await client.query(
+                            'INSERT INTO "Locations" ("Id", "Name", "ParentId","Address","NormalizedName","Status","Country", "IsActive","Level","Type") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+                            [provinceId, nameTinhThanhPho(fullProvinceName), null, address, normalizedName, 6, "VN", true, 3, type]
+                        );
+                    }
+                } else if (normalizeNameX(dbprovinces.rows[0].Name) === normalizeNameX(province.name)  && dbprovinces.rows[0].Id === provinceId && dbprovinces.rows[0].IsActive == false) {
                     // If same province (same name), just update IsActive
                     await client.query(
                         'UPDATE "Locations" SET "IsActive" = $1 WHERE "Id" = $2',
@@ -142,22 +153,22 @@ async function importData() {
                 }
             } else {
                 // If province doesn't exist, insert new
-                imported.push({
-                    Id: provinceId,
-                    Name: fullProvinceName,
-                    ParentId: null,
-                    Address: address,
-                    NormalizedName: normalizedName,
-                    Status: 6,
-                    Country: "VN",
-                    IsActive: true,
-                    Level: 3,
-                    Type: type
-                });
-                await client.query(
-                    'INSERT INTO "Locations" ("Id", "Name", "ParentId","Address","NormalizedName","Status","Country", "IsActive","Level","Type") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
-                    [provinceId, fullProvinceName, null, address, normalizedName, 6, "VN", true, 3, type]
-                );
+                // imported.push({
+                //     Id: provinceId,
+                //     Name: fullProvinceName,
+                //     ParentId: null,
+                //     Address: address,
+                //     NormalizedName: normalizedName,
+                //     Status: 6,
+                //     Country: "VN",
+                //     IsActive: true,
+                //     Level: 3,
+                //     Type: type
+                // });
+                // await client.query(
+                //     'INSERT INTO "Locations" ("Id", "Name", "ParentId","Address","NormalizedName","Status","Country", "IsActive","Level","Type") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+                //     [provinceId, fullProvinceName, null, address, normalizedName, 6, "VN", true, 3, type]
+                // );
             }
 
             var wards = province.wards;
@@ -185,9 +196,7 @@ async function importData() {
                 }
                 
                 // At this point, wardId is either original (if no duplicate) or new (if there was a duplicate)
-                if(wardId.includes("_X") && allLocations.rows?.some(x => x.Status == 6)){
-                    
-                }else{
+                if(firstImport){
                     imported.push({
                         Id: wardId,
                         Name: ward.name,
