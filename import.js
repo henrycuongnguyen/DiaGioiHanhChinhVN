@@ -10,7 +10,7 @@ const pool = new Pool({
     database: 'nobiv2-bug-kiot-staticupdate.ecrm.vn'
 });
 
-const firstImport = true;
+const firstImport = false;
 
 function getLocationTypeValue(displayName, placeType) {
     // For provinces, use place_type
