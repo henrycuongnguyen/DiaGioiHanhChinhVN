@@ -3,14 +3,14 @@ const fs = require('fs');
 
 // Database configuration
 const pool = new Pool({
-    user: 'nobiv2-bug-kiot-staticupdate.ecrm.vn',
-    password: 'd2db6d4fbe3f4736a101a3f9fed0ef1e',
-    host: '61.28.231.241',
-    port: 5432,
-    database: 'nobiv2-bug-kiot-staticupdate.ecrm.vn'
+    user: 'globaldbs',
+    password: 'bd12e86a2b4d4349bec105365f984424',
+    host: '109.237.69.226',
+    port: 30432,
+    database: 'global-services-dev'
 });
 
-const firstImport = false;
+const firstImport = true;
 
 function getLocationTypeValue(displayName, placeType) {
     // For provinces, use place_type
